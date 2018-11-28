@@ -3,7 +3,7 @@ require 'httparty'
 require 'json'
 
 
-TIME_PERIOD = 30
+TIME_PERIOD = 5
 
 @trade_returns_pot1 = 0
 @trade_returns_pot2 = 0
@@ -84,15 +84,15 @@ def calculate_trade1()
   elsif trade1_before == false && @trade1_in == true
     # order was bought, set purchase price
     current_price = get_poloniex_ticker
-    puts "bought at " + current_price.to_s
+    puts "trading pot 1 bought at " + current_price.to_s
     # reset last price price as we just bought some
     @trade_pot1_lastbuyprice = current_price
   elsif trade1_before == true && @trade1_in == false
     # order was sold, set purchase price
     current_price = get_poloniex_ticker
-    puts "sold at " + current_price.to_s
-    @trade_returns_pot1 = current_price.to_i - @trade_pot1_lastbuyprice
-    puts "trading pot 1 running total: " + @trade_returns_pot1.to_s
+    puts "trading pot 1 sold at " + current_price.to_s
+    puts "original buy price: " + @trade_pot1_lastbuyprice.to_s
+    @trade_returns_pot1 = @trade_returns_pot1 + (current_price.to_i - @trade_pot1_lastbuyprice)
   elsif trade1_before == false && @trade1_in == false
     puts "trade 1 out and staying out"
   else
@@ -110,15 +110,15 @@ def calculate_trade2
   elsif trade2_before == false && @trade2_in == true
     # order was bought, set purchase price
     current_price = get_poloniex_ticker
-    puts "bought at " + current_price.to_s
+    puts "trading pot 2 bought at " + current_price.to_s
     # reset last price price as we just bought some
     @trade_pot2_lastbuyprice = current_price
-  elsif trade2_before == true && @trade1_in == false
+  elsif trade2_before == true && @trade2_in == false
     # order was sold, set purchase price
     current_price = get_poloniex_ticker
-    puts "sold at " + current_price.to_s
-    @trade_returns_pot2 = current_price.to_i - @trade_pot2_lastbuyprice
-    puts "trading pot 2 running total: " + @trade_returns_pot2.to_s
+    puts "trading pot 2 sold at " + current_price.to_s
+    puts "original buy price: " + @trade_pot2_lastbuyprice.to_s
+    @trade_returns_pot2 = @trade_returns_pot2 + (current_price.to_i - @trade_pot2_lastbuyprice)
   elsif trade2_before == false && @trade2_in == false
     puts "trade 2 out and staying out"
   else
@@ -136,14 +136,15 @@ def calculate_trade3
   elsif trade3_before == false && @trade3_in == true
     # order was bought, set purchase price
     current_price = get_poloniex_ticker
-    puts "bought at " + current_price.to_s
+    puts "trading pot 3 bought at " + current_price.to_s
     # reset last price price as we just bought some
     @trade_pot3_lastbuyprice = current_price
   elsif trade3_before == true && @trade3_in == false
     # order was sold, set purchase price
     current_price = get_poloniex_ticker
-    puts "sold at " + current_price.to_s
-    @trade_returns_pot3 = current_price.to_i - @trade_pot3_lastbuyprice
+    puts "trading pot 3 sold at " + current_price.to_s
+    puts "original buying price: " + @trade_pot3_lastbuyprice.to_s
+    @trade_returns_pot3 = @trade_returns_pot3 + (current_price.to_i - @trade_pot3_lastbuyprice)
     puts "trading pot 3 running total: " + @trade_returns_pot3.to_s
   elsif trade3_before == false && @trade3_in == false
     puts "trade 3 out and staying out"
@@ -162,27 +163,29 @@ def prime_initial_data
   end
 end
 
-def set_initial_state
 
-end
 
 
 prime_initial_data
 
-
-
 run = true
 while run == true
-  # create base data - should take 7 minute
-  # we take a data sample every 15 seconds which should be 4 times a minute
-  # this requires all moving averages to be multipled by 4 in calculations
+
+  # remove the first entry before getting new one
+  @running_results.delete_at(0)
+  # get new values
+  @running_results.push(get_poloniex_ticker)
+
 
   #puts results_array
-
+  puts "============================================"
+  puts @running_results.last.to_s
   calculate_trade1
+  puts "--------------------------------------------"
   calculate_trade2
+  puts "--------------------------------------------"
   calculate_trade3
-
+  puts "--------------------------------------------"
 
   sleep TIME_PERIOD
 
@@ -190,10 +193,6 @@ while run == true
   puts "trading pot 2 running total: " + @trade_returns_pot2.to_s
   puts "trading pot 3 running total: " + @trade_returns_pot3.to_s
 
-  # remove the first entry before getting new one
-  @running_results.delete_at(0)
-  # get new values
-  @running_results.push(get_poloniex_ticker)
 end
 
 
