@@ -65,7 +65,7 @@ def calculate_conclusion_and_act(value1, value2, flag, comment)
     if value1 > value2
      # puts "BUYING NOW"
       return_value = true
-    else
+    elsif value1 < value2
     #  puts "STAYING OUT"
       return_value = false
     end
@@ -73,7 +73,7 @@ def calculate_conclusion_and_act(value1, value2, flag, comment)
     if value1 > value2
     #  puts "STAYING IN"
       return_value = true
-    else
+    elsif value1 < value2
     #  puts "SELLING NOW"
       return_value = false
     end
