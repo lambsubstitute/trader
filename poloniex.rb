@@ -3,7 +3,7 @@ require 'httparty'
 require 'json'
 
 
-TIME_PERIOD = 5
+TIME_PERIOD = 1
 
 @trade_returns_pot1 = 0
 @trade_returns_pot2 = 0
@@ -16,6 +16,14 @@ TIME_PERIOD = 5
 @trade_pot1_lastbuyprice = 0
 @trade_pot2_lastbuyprice = 0
 @trade_pot3_lastbuyprice = 0
+
+@trade1_loss_counter = 0
+@trade2_loss_counter = 0
+@trade3_loss_counter = 0
+
+@trade1_gains_counter = 0
+@trade2_gains_counter = 0
+@trade3_gains_counter = 0
 
 
 @trade1_in = false
@@ -92,7 +100,12 @@ def calculate_trade1()
     current_price = get_poloniex_ticker
     puts "trading pot 1 sold at " + current_price.to_s
     puts "original buy price: " + @trade_pot1_lastbuyprice.to_s
-    @trade_returns_pot1 = @trade_returns_pot1 + (current_price.to_i - @trade_pot1_lastbuyprice)
+    @trade_returns_pot1 = @trade_returns_pot1 + (current_price - @trade_pot1_lastbuyprice)
+    if @trade_pot1_lastbuyprice > current_price
+      @trade1_loss_counter = @trade1_loss_counter +1
+    else
+      @trade1_gains_counter = @trade1_gains_counter +1
+    end
   elsif trade1_before == false && @trade1_in == false
     puts "trade 1 out and staying out"
   else
@@ -118,7 +131,12 @@ def calculate_trade2
     current_price = get_poloniex_ticker
     puts "trading pot 2 sold at " + current_price.to_s
     puts "original buy price: " + @trade_pot2_lastbuyprice.to_s
-    @trade_returns_pot2 = @trade_returns_pot2 + (current_price.to_i - @trade_pot2_lastbuyprice)
+    @trade_returns_pot2 = @trade_returns_pot2 + (current_price - @trade_pot2_lastbuyprice)
+    if @trade_pot2_lastbuyprice > current_price
+      @trade2_loss_counter = @trade2_loss_counter +1
+    else
+      @trade2_gains_counter = @trade2_gains_counter +1
+    end
   elsif trade2_before == false && @trade2_in == false
     puts "trade 2 out and staying out"
   else
@@ -144,8 +162,13 @@ def calculate_trade3
     current_price = get_poloniex_ticker
     puts "trading pot 3 sold at " + current_price.to_s
     puts "original buying price: " + @trade_pot3_lastbuyprice.to_s
-    @trade_returns_pot3 = @trade_returns_pot3 + (current_price.to_i - @trade_pot3_lastbuyprice)
+    @trade_returns_pot3 = @trade_returns_pot3 + (current_price - @trade_pot3_lastbuyprice)
     puts "trading pot 3 running total: " + @trade_returns_pot3.to_s
+    if @trade_pot3_lastbuyprice > current_price
+      @trade3_loss_counter = @trade3_loss_counter +1
+    else
+      @trade3_gains_counter = @trade3_gains_counter +1
+    end
   elsif trade3_before == false && @trade3_in == false
     puts "trade 3 out and staying out"
   else
@@ -167,10 +190,10 @@ end
 
 
 prime_initial_data
-
+count = 0
 run = true
 while run == true
-
+  count = count + 1
   # remove the first entry before getting new one
   @running_results.delete_at(0)
   # get new values
@@ -189,9 +212,29 @@ while run == true
 
   sleep TIME_PERIOD
 
-  puts "trading pot 1 running total: " + @trade_returns_pot1.to_s
-  puts "trading pot 2 running total: " + @trade_returns_pot2.to_s
-  puts "trading pot 3 running total: " + @trade_returns_pot3.to_s
+
+
+  total_pot = @trade_returns_pot1 + @trade_returns_pot1 + @trade_returns_pot1
+  puts "total trading profit/loss pot: " + total_pot.to_s
+
+  if count == 10
+    puts "------------------------------------------"
+    puts "time for profit and loss trade update"
+    puts "TRADE POT 1"
+    puts "gains: " + @trade1_gains_counter.to_s
+    puts "losses: " + @trade1_loss_counter.to_s
+    puts "TRADE POT 2"
+    puts "gains: " + @trade2_gains_counter.to_s
+    puts "losses: " + @trade2_loss_counter.to_s
+    puts "TRADE POT 3"
+    puts "gains: " + @trade3_gains_counter.to_s
+    puts "losses: " + @trade3_loss_counter.to_s
+    count = 0
+  end
+
+  #puts "trading pot 1 running total: " + @trade_returns_pot1.to_s
+  #puts "trading pot 2 running total: " + @trade_returns_pot2.to_s
+  #puts "trading pot 3 running total: " + @trade_returns_pot3.to_s
 
 end
 
