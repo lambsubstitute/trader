@@ -3,7 +3,7 @@ require 'httparty'
 require 'json'
 
 
-TIME_PERIOD = 30
+TIME_PERIOD = 5
 
 @trade_returns_pot1 = 0
 @trade_returns_pot2 = 0
