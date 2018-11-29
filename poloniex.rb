@@ -3,29 +3,34 @@ require 'httparty'
 require 'json'
 
 
-TIME_PERIOD = 5
+TIME_PERIOD = 1
 
+# profit and loss accumulators to track trades in each pot
 @trade_returns_pot1 = 0
 @trade_returns_pot2 = 0
 @trade_returns_pot3 = 0
 
+# current buy price, unsure if needed any more
 @trade1_buyprice = 0
 @trade2_buyprice = 0
 @trade3_buyprice = 0
 
+# save the last buy price for comparisons when its time to sell this trade off
 @trade_pot1_lastbuyprice = 0
 @trade_pot2_lastbuyprice = 0
 @trade_pot3_lastbuyprice = 0
 
+# keep a count of the losing trades
 @trade1_loss_counter = 0
 @trade2_loss_counter = 0
 @trade3_loss_counter = 0
 
+# keep a count of the gaining trades
 @trade1_gains_counter = 0
 @trade2_gains_counter = 0
 @trade3_gains_counter = 0
 
-
+# flag to say if trade is currently in place
 @trade1_in = false
 @trade2_in = false
 @trade3_in = false
@@ -44,7 +49,7 @@ def get_moving_average(ma, results_array)
     count = count + 1
   end
   ma1 = ma1_temp / ma
-  #puts "moving average for " + ma.to_s + " was: " + ma1.to_s
+  puts "moving average for " + ma.to_s + " was: " + ma1.to_s
   return ma1
 end
 
@@ -59,33 +64,42 @@ def update_usdt_btc_pair
 
 end
 
-def calculate_conclusion_and_act(value1, value2, flag, comment)
- # puts "calculating moving average for " + comment
-  if flag == false
-    if value1 > value2
-     # puts "BUYING NOW"
-      return_value = true
-    elsif value1 < value2
-    #  puts "STAYING OUT"
-      return_value = false
-    end
+def buy_or_sell(value1, value2)
+  buy_or_sell = 'null'
+  if value1 >= value2
+    buy_or_sell = true
+  elsif value1 < value2
+    buy_or_sell = false
   else
-    if value1 > value2
-    #  puts "STAYING IN"
-      return_value = true
-    elsif value1 < value2
-    #  puts "SELLING NOW"
-      return_value = false
-    end
+    puts "BROKEN - WAS NOT ABLE TO DETERMINE BUY OR SELL STATUS FROM MOVING AVERAGES"
+  end
+  return buy_or_sell
+end
+
+def calculate_conclusion_and_act(value1, value2, flag, comment)
+  # this method calculates whether to trade or not
+  # based on the moving averages it has been pass
+
+  # puts "calculating moving average for " + comment
+  if flag == false
+    return_value = buy_or_sell(value1, value2)
+  elsif flag == true
+    return_value = buy_or_sell(value1, value2)
+  else
+    puts "BROKEN -- COULD NOT DETERMINE THE FLAG STATUS TO KNOW IF WE WERE IN OR OUT OF CURRENT TRADE POSITION"
   end
   return return_value
 end
 
-def calculate_trade1()
-  ma_2min = get_moving_average(2, @running_results)
-  ma_7min = get_moving_average(7, @running_results)
+def calculate_trade1
+  # calculate moving averages and whether trade is responsible move
+  ma_2min = get_moving_average(4, @running_results)
+  ma_7min = get_moving_average(14, @running_results)
   trade1_before = @trade1_in
   @trade1_in = calculate_conclusion_and_act(ma_2min, ma_7min, @trade1_in, "2 and 7")
+
+
+  # act on the results
   if trade1_before == true && @trade1_in == true
     puts "trade 1 in and staying in"
     # do nothing
@@ -106,10 +120,12 @@ def calculate_trade1()
       @trade1_loss_counter = @trade1_loss_counter +1
       puts "LOSSER"
       puts trade_returns.to_s
-    else
+    elsif @trade_pot1_lastbuyprice  < current_price
       puts "WINNER"
       puts trade_returns.to_s
       @trade1_gains_counter = @trade1_gains_counter +1
+    else
+      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE'
     end
   elsif trade1_before == false && @trade1_in == false
     puts "trade 1 out and staying out"
@@ -118,9 +134,10 @@ def calculate_trade1()
   end
 end
 
+
 def calculate_trade2
-  ma_2min = get_moving_average(2, @running_results)
-  ma_30min = get_moving_average(30, @running_results)
+  ma_2min = get_moving_average(4, @running_results)
+  ma_30min = get_moving_average(60, @running_results)
   trade2_before = @trade2_in
   @trade2_in = calculate_conclusion_and_act(ma_2min, ma_30min, @trade2_in, "2 and 30")
   if trade2_before == true && @trade2_in == true
@@ -142,10 +159,12 @@ def calculate_trade2
       @trade2_loss_counter = @trade2_loss_counter +1
       puts "LOSER"
       puts trade_returns.to_s
-    else
-      @trade2_gains_counter = @trade2_gains_counter +1
+    elsif @trade_pot2_lastbuyprice  < current_price
       puts "WINNER"
       puts trade_returns.to_s
+      @trade2_gains_counter = @trade2_gains_counter +1
+    else
+      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE ON TRADE 2'
     end
   elsif trade2_before == false && @trade2_in == false
     puts "trade 2 out and staying out"
@@ -155,8 +174,8 @@ def calculate_trade2
 end
 
 def calculate_trade3
-  ma_7min = get_moving_average(7, @running_results)
-  ma_30min = get_moving_average(30, @running_results)
+  ma_7min = get_moving_average(14, @running_results)
+  ma_30min = get_moving_average(60, @running_results)
   trade3_before = @trade3_in
   @trade3_in = calculate_conclusion_and_act(ma_7min, ma_30min, @trade3_in, "7 and 30")
   if trade3_before == true && @trade3_in == true
@@ -179,10 +198,12 @@ def calculate_trade3
       @trade3_loss_counter = @trade3_loss_counter +1
       puts "LOSER"
       puts trade_returns.to_s
-    else
-      @trade3_gains_counter = @trade3_gains_counter +1
+    elsif @trade_pot3_lastbuyprice  < current_price
       puts "WINNER"
       puts trade_returns.to_s
+      @trade3_gains_counter = @trade3_gains_counter +1
+    else
+      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE ON TRADE 3'
     end
   elsif trade3_before == false && @trade3_in == false
     puts "trade 3 out and staying out"
@@ -193,11 +214,11 @@ end
 
 def prime_initial_data
   puts "collecting data ......."
-  while @running_results.length < 30
+  while @running_results.length < 60
     @running_results.push(get_poloniex_ticker)
     sleep TIME_PERIOD
     puts "still collecting data ......."
-    puts "on data collection enrty " + @running_results.length.to_s + " of 30"
+    puts "on data collection enrty " + @running_results.length.to_s + " of 60"
   end
 end
 
@@ -229,7 +250,7 @@ while run == true
 
 
 
-  total_pot = @trade_returns_pot1 + @trade_returns_pot1 + @trade_returns_pot1
+  total_pot = @trade_returns_pot1 + @trade_returns_pot2 + @trade_returns_pot3
   puts "total trading profit/loss pot: " + total_pot.to_s
 
   if count == 10
@@ -238,12 +259,15 @@ while run == true
     puts "TRADE POT 1"
     puts "gains: " + @trade1_gains_counter.to_s
     puts "losses: " + @trade1_loss_counter.to_s
+    puts "total profit/loss: " + @trade_returns_pot1.to_s
     puts "TRADE POT 2"
     puts "gains: " + @trade2_gains_counter.to_s
     puts "losses: " + @trade2_loss_counter.to_s
+    puts "total profit/loss: " + @trade_returns_pot2.to_s
     puts "TRADE POT 3"
     puts "gains: " + @trade3_gains_counter.to_s
     puts "losses: " + @trade3_loss_counter.to_s
+    puts "total profit/loss: " + @trade_returns_pot3.to_s
     count = 0
   end
 
