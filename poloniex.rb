@@ -3,8 +3,8 @@ require 'httparty'
 require 'json'
 
 
-TIME_PERIOD = 1
-MOVING_AVERAGE = 1
+TIME_PERIOD = 15
+MOVING_AVERAGE = 30
 # MOVING AVERAGE sets how long the moving average should be set for, ie the candle times
 # for example, if you set the TIME PERIOD TO 30 seconds between calls, and the moving average to 1 minute, it wil take 2 calls a minute
 # if oyu set th etime period to 10 seconds and the moving average to 1 minute (60 seconds) it wil take 6 calls a minute
@@ -48,11 +48,20 @@ end
 @trade1_loss_counter = 0
 @trade2_loss_counter = 0
 @trade3_loss_counter = 0
+#loss total tally
+@trade1_loss_total = 0
+@trade2_loss_total = 0
+@trade3_loss_total = 0
 
 # keep a count of the gaining trades
 @trade1_gains_counter = 0
 @trade2_gains_counter = 0
 @trade3_gains_counter = 0
+
+# keep count of short circuit breaks
+@trade1_shortcircuit_counter = 0
+@trade2_shortcircuit_counter = 0
+@trade3_shortcircuit_counter = 0
 
 # flag to say if trade is currently in place
 @trade1_in = false
@@ -130,19 +139,22 @@ def calculate_trade1
   ma_2min = get_moving_average(@ma_2_interval, @running_results)
   ma_7min = get_moving_average(@ma_7_interval, @running_results)
   trade1_before = @trade1_in
+  trade_returns = 0
   @trade1_in = calculate_conclusion_and_act(ma_2min, ma_7min, @trade1_in, "2 and 7")
   current_price = get_poloniex_ticker
-  if (trade1_before == true && @trade1_in == true) && (@trade_pot1_lastbuyprice > current_price)
+  if trade1_before == true && @trade_pot1_lastbuyprice > current_price
     "The trade price went below the last buy price so saving our profits and selling"
     puts "SHORT CIRCUIT trading pot 1 and selling at at " + current_price.to_s
     puts "original buy price: " + @trade_pot1_lastbuyprice.to_s
     trade_returns = current_price - @trade_pot1_lastbuyprice
     @trade_returns_pot1 = @trade_returns_pot1 + trade_returns
+    @trade1_shortcircuit_counter = @trade1_shortcircuit_counter + 1
     @trade1_in = false
     if @trade_pot1_lastbuyprice > current_price
       @trade1_loss_counter = @trade1_loss_counter +1
       puts "LOSSER"
       puts trade_returns.to_s
+      @trade1_loss_total = @trade1_loss_total + trade_returns
     elsif @trade_pot1_lastbuyprice  < current_price
       puts "WINNER"
       puts trade_returns.to_s
@@ -155,6 +167,9 @@ def calculate_trade1
   # act on the results
   elsif trade1_before == true && @trade1_in == true
     puts "trade 1 in and staying in"
+    puts "orginal buy price: " + @trade_pot1_lastbuyprice.to_s
+    trade_returns = current_price - @trade_pot1_lastbuyprice
+    puts "current profit on trade: " + trade_returns.to_s
     # do nothing
   elsif trade1_before == false && @trade1_in == true
     # order was bought, set purchase price
@@ -171,6 +186,7 @@ def calculate_trade1
       @trade1_loss_counter = @trade1_loss_counter +1
       puts "LOSSER"
       puts trade_returns.to_s
+      @trade1_loss_total = @trade1_loss_total + trade_returns
     elsif @trade_pot1_lastbuyprice  < current_price
       puts "WINNER"
       puts trade_returns.to_s
@@ -192,9 +208,37 @@ def calculate_trade2
   ma_2min = get_moving_average(@ma_2_interval, @running_results)
   ma_30min = get_moving_average(@ma_30_interval, @running_results)
   trade2_before = @trade2_in
+  trade_returns = 0
+  current_price = get_poloniex_ticker
   @trade2_in = calculate_conclusion_and_act(ma_2min, ma_30min, @trade2_in, "2 and 30")
-  if trade2_before == true && @trade2_in == true
+  if trade2_before == true && @trade_pot2_lastbuyprice > current_price
+    "The trade price went below the last buy price so saving our profits and selling"
+    puts "SHORT CIRCUIT trading pot 2 and selling at at " + current_price.to_s
+    puts "original buy price: " + @trade_pot2_lastbuyprice.to_s
+    trade_returns = current_price - @trade_pot2_lastbuyprice
+    @trade_returns_pot2 = @trade_returns_pot2 + trade_returns
+    @trade2_shortcircuit_counter = @trade2_shortcircuit_counter + 1
+    @trade2_in = false
+    if @trade_pot2_lastbuyprice > current_price
+      @trade2_loss_counter = @trade2_loss_counter +1
+      puts "LOSSER"
+      puts trade_returns.to_s
+      @trade2_loss_total = @trade2_loss_total + trade_returns
+    elsif @trade_pot2_lastbuyprice  < current_price
+      puts "WINNER"
+      puts trade_returns.to_s
+      @trade2_gains_counter = @trade2_gains_counter +1
+    elsif @trade_pot2_lastbuyprice == current_price
+      puts "NEUTRAL TRADE ON TRADE POT 2 - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
+    else
+      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE 1'
+    end
+    # act on the results
+  elsif trade2_before == true && @trade2_in == true
     puts "trade 2 in and staying in"
+    puts "orginal buy price: " + @trade_pot2_lastbuyprice.to_s
+    trade_returns = current_price - @trade_pot2_lastbuyprice
+    puts "current profit on trade: " + trade_returns.to_s
   elsif trade2_before == false && @trade2_in == true
     # order was bought, set purchase price
     current_price = get_poloniex_ticker
@@ -203,7 +247,6 @@ def calculate_trade2
     @trade_pot2_lastbuyprice = current_price
   elsif trade2_before == true && @trade2_in == false
     # order was sold, set purchase price
-    current_price = get_poloniex_ticker
     puts "trading pot 2 sold at " + current_price.to_s
     puts "original buy price: " + @trade_pot2_lastbuyprice.to_s
     trade_returns = current_price - @trade_pot2_lastbuyprice
@@ -212,6 +255,7 @@ def calculate_trade2
       @trade2_loss_counter = @trade2_loss_counter +1
       puts "LOSER"
       puts trade_returns.to_s
+      @trade2_loss_total = @trade2_loss_total + trade_returns
     elsif @trade_pot2_lastbuyprice  < current_price
       puts "WINNER"
       puts trade_returns.to_s
@@ -232,9 +276,37 @@ def calculate_trade3
   ma_7min = get_moving_average(@ma_7_interval, @running_results)
   ma_30min = get_moving_average(@ma_30_interval, @running_results)
   trade3_before = @trade3_in
+  trade_returns = 0
+  current_price = get_poloniex_ticker
   @trade3_in = calculate_conclusion_and_act(ma_7min, ma_30min, @trade3_in, "7 and 30")
-  if trade3_before == true && @trade3_in == true
+  if trade3_before == true && @trade_pot3_lastbuyprice > current_price
+    "The trade price went below the last buy price so saving our profits and selling"
+    puts "SHORT CIRCUIT trading pot 3 and selling at at " + current_price.to_s
+    puts "original buy price: " + @trade_pot3_lastbuyprice.to_s
+    trade_returns = current_price - @trade_pot3_lastbuyprice
+    @trade3_shortcircuit_counter = @trade3_shortcircuit_counter + 1
+    @trade_returns_pot3 = @trade_returns_pot3 + trade_returns
+    @trade3_in = false
+    if @trade_pot3_lastbuyprice > current_price
+      @trade3_loss_counter = @trade3_loss_counter +1
+      puts "LOSSER"
+      puts trade_returns.to_s
+      @trade3_loss_total = @trade3_loss_total + trade_returns
+    elsif @trade_pot3_lastbuyprice  < current_price
+      puts "WINNER"
+      puts trade_returns.to_s
+      @trade3_gains_counter = @trade3_gains_counter +1
+    elsif @trade_pot3_lastbuyprice == current_price
+      puts "NEUTRAL TRADE ON TRADE POT 3 - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
+    else
+      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE 3'
+    end
+    # act on the results
+  elsif trade3_before == true && @trade3_in == true
     puts "trade 3 in and staying in"
+    puts "orginal buy price: " + @trade_pot3_lastbuyprice.to_s
+    trade_returns = current_price - @trade_pot3_lastbuyprice
+    puts "current profit on trade: " + trade_returns.to_s
   elsif trade3_before == false && @trade3_in == true
     # order was bought, set purchase price
     current_price = get_poloniex_ticker
@@ -243,7 +315,6 @@ def calculate_trade3
     @trade_pot3_lastbuyprice = current_price
   elsif trade3_before == true && @trade3_in == false
     # order was sold, set purchase price
-    current_price = get_poloniex_ticker
     puts "trading pot 3 sold at " + current_price.to_s
     puts "original buying price: " + @trade_pot3_lastbuyprice.to_s
     trade_returns = current_price - @trade_pot3_lastbuyprice
@@ -253,6 +324,7 @@ def calculate_trade3
       @trade3_loss_counter = @trade3_loss_counter +1
       puts "LOSER"
       puts trade_returns.to_s
+      @trade3_loss_total = @trade3_loss_total + trade_returns
     elsif @trade_pot3_lastbuyprice  < current_price
       puts "WINNER"
       puts trade_returns.to_s
@@ -317,14 +389,20 @@ while run_counter < @run_timer
     puts "TRADE POT 1"
     puts "gains: " + @trade1_gains_counter.to_s
     puts "losses: " + @trade1_loss_counter.to_s
+    puts "losses total: " + @trade1_loss_total.to_s
+    puts "short circuits: " + @trade2_shortcircuit_counter.to_s
     puts "total profit/loss: " + @trade_returns_pot1.to_s
     puts "TRADE POT 2"
     puts "gains: " + @trade2_gains_counter.to_s
     puts "losses: " + @trade2_loss_counter.to_s
+    puts "losses total: " + @trade2_loss_total.to_s
+    puts "short circuits: " + @trade2_shortcircuit_counter.to_s
     puts "total profit/loss: " + @trade_returns_pot2.to_s
     puts "TRADE POT 3"
     puts "gains: " + @trade3_gains_counter.to_s
     puts "losses: " + @trade3_loss_counter.to_s
+    puts "losses total: " + @trade3_loss_total.to_s
+    puts "short circuits: " + @trade3_shortcircuit_counter.to_s
     puts "total profit/loss: " + @trade_returns_pot3.to_s
     count = 0
   end
