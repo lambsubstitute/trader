@@ -3,7 +3,31 @@ require 'httparty'
 require 'json'
 
 
-TIME_PERIOD = 10
+TIME_PERIOD = 1
+MOVING_AVERAGE = 1
+# MOVING AVERAGE sets how long the moving average should be set for, ie the candle times
+# for example, if you set the TIME PERIOD TO 30 seconds between calls, and the moving average to 1 minute, it wil take 2 calls a minute
+# if oyu set th etime period to 10 seconds and the moving average to 1 minute (60 seconds) it wil take 6 calls a minute
+
+# set run time in minutes
+RUN_TIME = 60
+@run_timer = RUN_TIME * (60 * TIME_PERIOD)
+
+def create_timing_and_sample_sizes
+  data_sample_length = MOVING_AVERAGE / TIME_PERIOD
+  @ma_2_interval = 2 * data_sample_length
+  @ma_7_interval = 7 * data_sample_length
+  @ma_30_interval = 30 * data_sample_length
+
+  puts "take a sample every " + TIME_PERIOD.to_s + " seconds"
+  puts "calculating on a " + MOVING_AVERAGE.to_s + " second moving average"
+  puts "this means taking " + data_sample_length.to_s + " data samples per candle"
+  puts "2 candle moving average requires " + @ma_2_interval.to_s + " data samples to be taken"
+  puts "7 candle moving average requires " + @ma_7_interval.to_s + " data samples to be taken"
+  puts "30 candle moving average requires " + @ma_30_interval.to_s + " data samples to be taken"
+end
+
+
 
 # profit and loss accumulators to track trades in each pot
 @trade_returns_pot1 = 0
@@ -54,9 +78,19 @@ def get_moving_average(ma, results_array)
 end
 
 def get_poloniex_ticker
+  flag = false
   # call poloniex and get all ticket data, and parse to JSON
-  raw_results = HTTParty.get("https://poloniex.com/public?command=returnTicker")
-  a = raw_results.parsed_response
+  while flag == false
+    begin
+      raw_results = HTTParty.get("https://poloniex.com/public?command=returnTicker")
+      a = raw_results.parsed_response
+      flag = true
+    rescue
+      raw_results = HTTParty.get("https://poloniex.com/public?command=returnTicker")
+      a = raw_results.parsed_response
+      flag = true
+    end
+  end
   return a['USDT_BTC']['last'].to_f
 end
 
@@ -66,9 +100,9 @@ end
 
 def buy_or_sell(value1, value2)
   buy_or_sell = 'null'
-  if value1 > value2
+  if value1 >= value2
     buy_or_sell = true
-  elsif value1 <= value2
+  elsif value1 < value2
     buy_or_sell = false
   else
     puts "BROKEN - WAS NOT ABLE TO DETERMINE BUY OR SELL STATUS FROM MOVING AVERAGES"
@@ -93,25 +127,42 @@ end
 
 def calculate_trade1
   # calculate moving averages and whether trade is responsible move
-  ma_2min = get_moving_average(4, @running_results)
-  ma_7min = get_moving_average(14, @running_results)
+  ma_2min = get_moving_average(@ma_2_interval, @running_results)
+  ma_7min = get_moving_average(@ma_7_interval, @running_results)
   trade1_before = @trade1_in
   @trade1_in = calculate_conclusion_and_act(ma_2min, ma_7min, @trade1_in, "2 and 7")
-
-
+  current_price = get_poloniex_ticker
+  if (trade1_before == true && @trade1_in == true) && (@trade_pot1_lastbuyprice > current_price)
+    "The trade price went below the last buy price so saving our profits and selling"
+    puts "SHORT CIRCUIT trading pot 1 and selling at at " + current_price.to_s
+    puts "original buy price: " + @trade_pot1_lastbuyprice.to_s
+    trade_returns = current_price - @trade_pot1_lastbuyprice
+    @trade_returns_pot1 = @trade_returns_pot1 + trade_returns
+    @trade1_in = false
+    if @trade_pot1_lastbuyprice > current_price
+      @trade1_loss_counter = @trade1_loss_counter +1
+      puts "LOSSER"
+      puts trade_returns.to_s
+    elsif @trade_pot1_lastbuyprice  < current_price
+      puts "WINNER"
+      puts trade_returns.to_s
+      @trade1_gains_counter = @trade1_gains_counter +1
+    elsif @trade_pot1_lastbuyprice == current_price
+      puts "NEUTRAL TRADE ON TRADE POT 1 - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
+    else
+      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE 1'
+    end
   # act on the results
-  if trade1_before == true && @trade1_in == true
+  elsif trade1_before == true && @trade1_in == true
     puts "trade 1 in and staying in"
     # do nothing
   elsif trade1_before == false && @trade1_in == true
     # order was bought, set purchase price
-    current_price = get_poloniex_ticker
     puts "trading pot 1 bought at " + current_price.to_s
     # reset last price price as we just bought some
     @trade_pot1_lastbuyprice = current_price
   elsif trade1_before == true && @trade1_in == false
     # order was sold, set purchase price
-    current_price = get_poloniex_ticker
     puts "trading pot 1 sold at " + current_price.to_s
     puts "original buy price: " + @trade_pot1_lastbuyprice.to_s
     trade_returns = current_price - @trade_pot1_lastbuyprice
@@ -138,8 +189,8 @@ end
 
 
 def calculate_trade2
-  ma_2min = get_moving_average(4, @running_results)
-  ma_30min = get_moving_average(60, @running_results)
+  ma_2min = get_moving_average(@ma_2_interval, @running_results)
+  ma_30min = get_moving_average(@ma_30_interval, @running_results)
   trade2_before = @trade2_in
   @trade2_in = calculate_conclusion_and_act(ma_2min, ma_30min, @trade2_in, "2 and 30")
   if trade2_before == true && @trade2_in == true
@@ -178,8 +229,8 @@ def calculate_trade2
 end
 
 def calculate_trade3
-  ma_7min = get_moving_average(14, @running_results)
-  ma_30min = get_moving_average(60, @running_results)
+  ma_7min = get_moving_average(@ma_7_interval, @running_results)
+  ma_30min = get_moving_average(@ma_30_interval, @running_results)
   trade3_before = @trade3_in
   @trade3_in = calculate_conclusion_and_act(ma_7min, ma_30min, @trade3_in, "7 and 30")
   if trade3_before == true && @trade3_in == true
@@ -220,21 +271,22 @@ end
 
 def prime_initial_data
   puts "collecting data ......."
-  while @running_results.length < 60
+  while @running_results.length < @ma_30_interval  # this is the largest interval so we use that as the limit
     @running_results.push(get_poloniex_ticker)
     sleep TIME_PERIOD
     puts "still collecting data ......."
-    puts "on data collection enrty " + @running_results.length.to_s + " of 60"
+    puts "on data collection enrty " + @running_results.length.to_s + " of " + @ma_30_interval.to_s
   end
 end
 
 
 
-
+create_timing_and_sample_sizes
 prime_initial_data
 count = 0
 run = true
-while run == true
+run_counter = 0
+while run_counter < @run_timer
   count = count + 1
   # remove the first entry before getting new one
   @running_results.delete_at(0)
@@ -280,7 +332,8 @@ while run == true
   #puts "trading pot 1 running total: " + @trade_returns_pot1.to_s
   #puts "trading pot 2 running total: " + @trade_returns_pot2.to_s
   #puts "trading pot 3 running total: " + @trade_returns_pot3.to_s
-
+  run_counter = run_counter + 1
+  puts "on iteration: " + run_counter.to_s + " of " + @run_timer.to_s
 end
 
 
