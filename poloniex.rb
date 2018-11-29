@@ -3,8 +3,9 @@ require 'httparty'
 require 'json'
 
 
-TIME_PERIOD = 15
-MOVING_AVERAGE = 30
+TIME_PERIOD = 1
+MOVING_AVERAGE = 5
+SHORTCIRCUIT_FLAG = false
 # MOVING AVERAGE sets how long the moving average should be set for, ie the candle times
 # for example, if you set the TIME PERIOD TO 30 seconds between calls, and the moving average to 1 minute, it wil take 2 calls a minute
 # if oyu set th etime period to 10 seconds and the moving average to 1 minute (60 seconds) it wil take 6 calls a minute
@@ -142,7 +143,7 @@ def calculate_trade1
   trade_returns = 0
   @trade1_in = calculate_conclusion_and_act(ma_2min, ma_7min, @trade1_in, "2 and 7")
   current_price = get_poloniex_ticker
-  if trade1_before == true && @trade_pot1_lastbuyprice > current_price
+  if trade1_before == true && @trade_pot1_lastbuyprice > current_price && SHORTCIRCUIT_FLAG == true
     "The trade price went below the last buy price so saving our profits and selling"
     puts "SHORT CIRCUIT trading pot 1 and selling at at " + current_price.to_s
     puts "original buy price: " + @trade_pot1_lastbuyprice.to_s
@@ -211,7 +212,7 @@ def calculate_trade2
   trade_returns = 0
   current_price = get_poloniex_ticker
   @trade2_in = calculate_conclusion_and_act(ma_2min, ma_30min, @trade2_in, "2 and 30")
-  if trade2_before == true && @trade_pot2_lastbuyprice > current_price
+  if trade2_before == true && @trade_pot2_lastbuyprice > current_price && SHORTCIRCUIT_FLAG == true
     "The trade price went below the last buy price so saving our profits and selling"
     puts "SHORT CIRCUIT trading pot 2 and selling at at " + current_price.to_s
     puts "original buy price: " + @trade_pot2_lastbuyprice.to_s
@@ -279,7 +280,7 @@ def calculate_trade3
   trade_returns = 0
   current_price = get_poloniex_ticker
   @trade3_in = calculate_conclusion_and_act(ma_7min, ma_30min, @trade3_in, "7 and 30")
-  if trade3_before == true && @trade_pot3_lastbuyprice > current_price
+  if trade3_before == true && @trade_pot3_lastbuyprice > current_price && SHORTCIRCUIT_FLAG == true
     "The trade price went below the last buy price so saving our profits and selling"
     puts "SHORT CIRCUIT trading pot 3 and selling at at " + current_price.to_s
     puts "original buy price: " + @trade_pot3_lastbuyprice.to_s
@@ -381,6 +382,7 @@ while run_counter < @run_timer
 
 
   total_pot = @trade_returns_pot1 + @trade_returns_pot2 + @trade_returns_pot3
+  total_pot = total_pot.round(2)
   puts "total trading profit/loss pot: " + total_pot.to_s
 
   if count == 10
