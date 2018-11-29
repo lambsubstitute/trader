@@ -3,7 +3,7 @@ require 'httparty'
 require 'json'
 
 
-TIME_PERIOD = 1
+TIME_PERIOD = 10
 
 # profit and loss accumulators to track trades in each pot
 @trade_returns_pot1 = 0
@@ -66,9 +66,9 @@ end
 
 def buy_or_sell(value1, value2)
   buy_or_sell = 'null'
-  if value1 >= value2
+  if value1 > value2
     buy_or_sell = true
-  elsif value1 < value2
+  elsif value1 <= value2
     buy_or_sell = false
   else
     puts "BROKEN - WAS NOT ABLE TO DETERMINE BUY OR SELL STATUS FROM MOVING AVERAGES"
@@ -124,8 +124,10 @@ def calculate_trade1
       puts "WINNER"
       puts trade_returns.to_s
       @trade1_gains_counter = @trade1_gains_counter +1
+    elsif @trade_pot1_lastbuyprice == current_price
+      puts "NEUTRAL TRADE ON TRADE POT 1 - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
     else
-      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE'
+      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE 1'
     end
   elsif trade1_before == false && @trade1_in == false
     puts "trade 1 out and staying out"
@@ -163,6 +165,8 @@ def calculate_trade2
       puts "WINNER"
       puts trade_returns.to_s
       @trade2_gains_counter = @trade2_gains_counter +1
+    elsif @trade_pot2_lastbuyprice == current_price
+      puts "NEUTRAL TRADE ON TRADE POT 2 - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
     else
       puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE ON TRADE 2'
     end
@@ -202,6 +206,8 @@ def calculate_trade3
       puts "WINNER"
       puts trade_returns.to_s
       @trade3_gains_counter = @trade3_gains_counter +1
+    elsif @trade_pot3_lastbuyprice == current_price
+      puts "NEUTRAL TRADE ON TRADE POT 3 - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
     else
       puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE ON TRADE 3'
     end
