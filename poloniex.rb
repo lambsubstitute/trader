@@ -1,10 +1,10 @@
 #require './httparty'
 require 'httparty'
 require 'json'
-
+require './trade.rb'
 
 TIME_PERIOD = 1
-MOVING_AVERAGE = 5
+MOVING_AVERAGE = 1
 SHORTCIRCUIT_FLAG = false
 # MOVING AVERAGE sets how long the moving average should be set for, ie the candle times
 # for example, if you set the TIME PERIOD TO 30 seconds between calls, and the moving average to 1 minute, it wil take 2 calls a minute
@@ -13,6 +13,35 @@ SHORTCIRCUIT_FLAG = false
 # set run time in minutes
 RUN_TIME = 60
 @run_timer = RUN_TIME * (60 * TIME_PERIOD)
+@trade_pots = 3
+
+# profit and loss accumulators to track trades in each pot
+@trade_returns_pot = []
+
+# current buy price, unsure if needed any more
+@trade_buyprice = []
+
+# save the last buy price for comparisons when its time to sell this trade off
+@trade_pot_lastbuyprice = []
+
+# keep a count of the losing trades
+@trade_loss_counter = []
+
+#loss total tally
+@trade_loss_total = []
+
+# keep a count of the gaining trades
+@trade_gains_counter = []
+
+# keep count of short circuit breaks
+@trade_shortcircuit_counter = []
+
+
+# flag to say if trade is currently in place
+@trade_in = []
+
+# results array
+@running_results = []
 
 def create_timing_and_sample_sizes
   data_sample_length = MOVING_AVERAGE / TIME_PERIOD
@@ -26,51 +55,32 @@ def create_timing_and_sample_sizes
   puts "2 candle moving average requires " + @ma_2_interval.to_s + " data samples to be taken"
   puts "7 candle moving average requires " + @ma_7_interval.to_s + " data samples to be taken"
   puts "30 candle moving average requires " + @ma_30_interval.to_s + " data samples to be taken"
+
+  a = 0
+  while a < @trade_pots
+    @trade_in[a] = false
+    @trade_shortcircuit_counter[a] = 0
+    @trade_gains_counter[a] = 0
+    @trade_loss_total[a] = 0
+    @trade_loss_counter[a] = 0
+    @trade_pot_lastbuyprice[a] = 0
+    @trade_buyprice[a] = 0
+    @trade_returns_pot[a] = 0
+    a = a+ 1
+  end
+  @moving_averages = [[@ma_2_interval,@ma_7_interval],[@ma_2_interval,@ma_30_interval],[@ma_7_interval,@ma_30_interval]]
 end
 
 
-
-# profit and loss accumulators to track trades in each pot
-@trade_returns_pot1 = 0
-@trade_returns_pot2 = 0
-@trade_returns_pot3 = 0
-
-# current buy price, unsure if needed any more
-@trade1_buyprice = 0
-@trade2_buyprice = 0
-@trade3_buyprice = 0
-
-# save the last buy price for comparisons when its time to sell this trade off
-@trade_pot1_lastbuyprice = 0
-@trade_pot2_lastbuyprice = 0
-@trade_pot3_lastbuyprice = 0
-
-# keep a count of the losing trades
-@trade1_loss_counter = 0
-@trade2_loss_counter = 0
-@trade3_loss_counter = 0
-#loss total tally
-@trade1_loss_total = 0
-@trade2_loss_total = 0
-@trade3_loss_total = 0
-
-# keep a count of the gaining trades
-@trade1_gains_counter = 0
-@trade2_gains_counter = 0
-@trade3_gains_counter = 0
-
-# keep count of short circuit breaks
-@trade1_shortcircuit_counter = 0
-@trade2_shortcircuit_counter = 0
-@trade3_shortcircuit_counter = 0
-
-# flag to say if trade is currently in place
-@trade1_in = false
-@trade2_in = false
-@trade3_in = false
-
-@running_results = []
-
+def prime_initial_data
+  puts "collecting data ......."
+  while @running_results.length < @ma_30_interval  # this is the largest interval so we use that as the limit
+    @running_results.push(get_poloniex_ticker)
+    sleep TIME_PERIOD
+    puts "still collecting data ......."
+    puts "on data collection enrty " + @running_results.length.to_s + " of " + @ma_30_interval.to_s
+  end
+end
 
 
 def get_moving_average(ma, results_array)
@@ -101,7 +111,8 @@ def get_poloniex_ticker
       flag = true
     end
   end
-  return a['USDT_BTC']['last'].to_f
+  return a['USDT_BTC']['last'].to_f.round(2)
+
 end
 
 def update_usdt_btc_pair
@@ -205,215 +216,111 @@ def calculate_trade1
 end
 
 
-def calculate_trade2
-  ma_2min = get_moving_average(@ma_2_interval, @running_results)
-  ma_30min = get_moving_average(@ma_30_interval, @running_results)
-  trade2_before = @trade2_in
-  trade_returns = 0
-  current_price = get_poloniex_ticker
-  @trade2_in = calculate_conclusion_and_act(ma_2min, ma_30min, @trade2_in, "2 and 30")
-  if trade2_before == true && @trade_pot2_lastbuyprice > current_price && SHORTCIRCUIT_FLAG == true
-    "The trade price went below the last buy price so saving our profits and selling"
-    puts "SHORT CIRCUIT trading pot 2 and selling at at " + current_price.to_s
-    puts "original buy price: " + @trade_pot2_lastbuyprice.to_s
-    trade_returns = current_price - @trade_pot2_lastbuyprice
-    @trade_returns_pot2 = @trade_returns_pot2 + trade_returns
-    @trade2_shortcircuit_counter = @trade2_shortcircuit_counter + 1
-    @trade2_in = false
-    if @trade_pot2_lastbuyprice > current_price
-      @trade2_loss_counter = @trade2_loss_counter +1
-      puts "LOSSER"
-      puts trade_returns.to_s
-      @trade2_loss_total = @trade2_loss_total + trade_returns
-    elsif @trade_pot2_lastbuyprice  < current_price
-      puts "WINNER"
-      puts trade_returns.to_s
-      @trade2_gains_counter = @trade2_gains_counter +1
-    elsif @trade_pot2_lastbuyprice == current_price
-      puts "NEUTRAL TRADE ON TRADE POT 2 - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
-    else
-      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE 1'
-    end
-    # act on the results
-  elsif trade2_before == true && @trade2_in == true
-    puts "trade 2 in and staying in"
-    puts "orginal buy price: " + @trade_pot2_lastbuyprice.to_s
-    trade_returns = current_price - @trade_pot2_lastbuyprice
-    puts "current profit on trade: " + trade_returns.to_s
-  elsif trade2_before == false && @trade2_in == true
-    # order was bought, set purchase price
-    current_price = get_poloniex_ticker
-    puts "trading pot 2 bought at " + current_price.to_s
-    # reset last price price as we just bought some
-    @trade_pot2_lastbuyprice = current_price
-  elsif trade2_before == true && @trade2_in == false
-    # order was sold, set purchase price
-    puts "trading pot 2 sold at " + current_price.to_s
-    puts "original buy price: " + @trade_pot2_lastbuyprice.to_s
-    trade_returns = current_price - @trade_pot2_lastbuyprice
-    @trade_returns_pot2 = @trade_returns_pot2 + trade_returns
-    if @trade_pot2_lastbuyprice > current_price
-      @trade2_loss_counter = @trade2_loss_counter +1
-      puts "LOSER"
-      puts trade_returns.to_s
-      @trade2_loss_total = @trade2_loss_total + trade_returns
-    elsif @trade_pot2_lastbuyprice  < current_price
-      puts "WINNER"
-      puts trade_returns.to_s
-      @trade2_gains_counter = @trade2_gains_counter +1
-    elsif @trade_pot2_lastbuyprice == current_price
-      puts "NEUTRAL TRADE ON TRADE POT 2 - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
-    else
-      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE ON TRADE 2'
-    end
-  elsif trade2_before == false && @trade2_in == false
-    puts "trade 2 out and staying out"
-  else
-    puts "BROKEN BROKEN BROKEN BROKEN CANT DETERMINE TRADE 2 CALCULATION"
-  end
-end
-
-def calculate_trade3
-  ma_7min = get_moving_average(@ma_7_interval, @running_results)
-  ma_30min = get_moving_average(@ma_30_interval, @running_results)
-  trade3_before = @trade3_in
-  trade_returns = 0
-  current_price = get_poloniex_ticker
-  @trade3_in = calculate_conclusion_and_act(ma_7min, ma_30min, @trade3_in, "7 and 30")
-  if trade3_before == true && @trade_pot3_lastbuyprice > current_price && SHORTCIRCUIT_FLAG == true
-    "The trade price went below the last buy price so saving our profits and selling"
-    puts "SHORT CIRCUIT trading pot 3 and selling at at " + current_price.to_s
-    puts "original buy price: " + @trade_pot3_lastbuyprice.to_s
-    trade_returns = current_price - @trade_pot3_lastbuyprice
-    @trade3_shortcircuit_counter = @trade3_shortcircuit_counter + 1
-    @trade_returns_pot3 = @trade_returns_pot3 + trade_returns
-    @trade3_in = false
-    if @trade_pot3_lastbuyprice > current_price
-      @trade3_loss_counter = @trade3_loss_counter +1
-      puts "LOSSER"
-      puts trade_returns.to_s
-      @trade3_loss_total = @trade3_loss_total + trade_returns
-    elsif @trade_pot3_lastbuyprice  < current_price
-      puts "WINNER"
-      puts trade_returns.to_s
-      @trade3_gains_counter = @trade3_gains_counter +1
-    elsif @trade_pot3_lastbuyprice == current_price
-      puts "NEUTRAL TRADE ON TRADE POT 3 - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
-    else
-      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE 3'
-    end
-    # act on the results
-  elsif trade3_before == true && @trade3_in == true
-    puts "trade 3 in and staying in"
-    puts "orginal buy price: " + @trade_pot3_lastbuyprice.to_s
-    trade_returns = current_price - @trade_pot3_lastbuyprice
-    puts "current profit on trade: " + trade_returns.to_s
-  elsif trade3_before == false && @trade3_in == true
-    # order was bought, set purchase price
-    current_price = get_poloniex_ticker
-    puts "trading pot 3 bought at " + current_price.to_s
-    # reset last price price as we just bought some
-    @trade_pot3_lastbuyprice = current_price
-  elsif trade3_before == true && @trade3_in == false
-    # order was sold, set purchase price
-    puts "trading pot 3 sold at " + current_price.to_s
-    puts "original buying price: " + @trade_pot3_lastbuyprice.to_s
-    trade_returns = current_price - @trade_pot3_lastbuyprice
-    @trade_returns_pot3 = @trade_returns_pot3 + trade_returns
-    puts "trading pot 3 running total: " + @trade_returns_pot3.to_s
-    if @trade_pot3_lastbuyprice > current_price
-      @trade3_loss_counter = @trade3_loss_counter +1
-      puts "LOSER"
-      puts trade_returns.to_s
-      @trade3_loss_total = @trade3_loss_total + trade_returns
-    elsif @trade_pot3_lastbuyprice  < current_price
-      puts "WINNER"
-      puts trade_returns.to_s
-      @trade3_gains_counter = @trade3_gains_counter +1
-    elsif @trade_pot3_lastbuyprice == current_price
-      puts "NEUTRAL TRADE ON TRADE POT 3 - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
-    else
-      puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE ON TRADE 3'
-    end
-  elsif trade3_before == false && @trade3_in == false
-    puts "trade 3 out and staying out"
-  else
-    puts "BROKEN BROKEN BROKEN BROKEN CANT DETERMINE TRADE 3 CALCULATION"
-  end
-end
-
-def prime_initial_data
-  puts "collecting data ......."
-  while @running_results.length < @ma_30_interval  # this is the largest interval so we use that as the limit
-    @running_results.push(get_poloniex_ticker)
-    sleep TIME_PERIOD
-    puts "still collecting data ......."
-    puts "on data collection enrty " + @running_results.length.to_s + " of " + @ma_30_interval.to_s
-  end
-end
-
-
-
 create_timing_and_sample_sizes
 prime_initial_data
 count = 0
 run = true
 run_counter = 0
 while run_counter < @run_timer
+  puts "============================================"
   count = count + 1
   # remove the first entry before getting new one
   @running_results.delete_at(0)
   # get new values
   @running_results.push(get_poloniex_ticker)
 
-
-  #puts results_array
-  puts "============================================"
-  puts @running_results.last.to_s
-  calculate_trade1
-  puts "--------------------------------------------"
-  calculate_trade2
-  puts "--------------------------------------------"
-  calculate_trade3
-  puts "--------------------------------------------"
-
-  sleep TIME_PERIOD
+  trade_index = 0
 
 
+  while trade_index < @trade_pots
+    current_price = get_poloniex_ticker
+    trade = Trade.new
+    trade_decision = trade.in_or_out?(@running_results, current_price, @moving_averages[trade_index])
+    puts "last price: #{current_price}"
+    trade_returns = current_price - @trade_pot_lastbuyprice[trade_index]
 
-  total_pot = @trade_returns_pot1 + @trade_returns_pot2 + @trade_returns_pot3
-  total_pot = total_pot.round(2)
-  puts "total trading profit/loss pot: " + total_pot.to_s
+    if @trade_in[trade_index] == true
+      if trade_decision == true
+        puts "trade pot #{trade_index + 1} in and staying in"
+        puts "orginal buy price: #{@trade_pot_lastbuyprice[trade_index]}"
+        puts "current profit on trade: #{trade_returns}"
+      elsif trade_decision == false
+        puts "trading pot #{trade_index + 1} sold at #{current_price}"
+        puts "original buying price: #{@trade_pot_lastbuyprice[trade_index]}"
+        @trade_returns_pot[trade_index] = @trade_returns_pot[trade_index] + trade_returns
+        puts "trading pot #{trade_index + 1} running total: #{@trade_returns_pot[trade_index]}"
+          if @trade_pot_lastbuyprice[trade_index] > current_price
+            @trade_loss_counter[trade_index] = @trade_loss_counter[trade_index] +1
+            puts "LOSER"
+            puts trade_returns.to_s
+            @trade_loss_total[trade_index] =  @trade_loss_total[trade_index] + trade_returns
+          elsif @trade_pot_lastbuyprice[trade_index] < current_price
+            puts "WINNER"
+            puts trade_returns.to_s
+            @trade_gains_counter[trade_index] =  @trade_gains_counter[trade_index] +1
+          elsif @trade_pot_lastbuyprice[trade_index] == current_price
+            puts "NEUTRAL TRADE ON TRADE POT #{trade_index + 1} - THIS TRADE SHOULD PROBABLY NOT HAVE BEEN MADE AS IT SOLD AS THE SAME AS THE BUY PRICE"
+          else
+            puts 'BROKEN - COULD NOT DETERMINE WINNING OR LOSING TRADE ON TRADE 3'
+          end
+        @trade_in[trade_index] = false
+      elsif trade_decision == "stand"
+        puts "trade pot #{trade_index + 1} in and staying in"
+        puts "original buying price: #{@trade_pot_lastbuyprice[trade_index]}"
+      else
+        puts "something seems BROKEN, got input from the buy sell signal that was not expected"
+      end
+     else
+        if trade_decision == true
+          # order was bought, set purchase price
+          puts "trading pot #{trade_index + 1} bought at #{current_price}"
+          # reset last price price as we just bought some
+          @trade_pot_lastbuyprice[trade_index] = current_price
+          @trade_in[trade_index] = true
+        elsif trade_decision == false
+          puts "trade pot #{trade_index + 1} out and staying out"
+        elsif trade_decision == "stand"
+          puts "trade pot #{trade_index + 1} out and staying out"
+        else
+          puts "BROKEN, was not able to determine trade decision"
+        end
 
-  if count == 10
-    puts "------------------------------------------"
-    puts "time for profit and loss trade update"
-    puts "TRADE POT 1"
-    puts "gains: " + @trade1_gains_counter.to_s
-    puts "losses: " + @trade1_loss_counter.to_s
-    puts "losses total: " + @trade1_loss_total.to_s
-    puts "short circuits: " + @trade2_shortcircuit_counter.to_s
-    puts "total profit/loss: " + @trade_returns_pot1.to_s
-    puts "TRADE POT 2"
-    puts "gains: " + @trade2_gains_counter.to_s
-    puts "losses: " + @trade2_loss_counter.to_s
-    puts "losses total: " + @trade2_loss_total.to_s
-    puts "short circuits: " + @trade2_shortcircuit_counter.to_s
-    puts "total profit/loss: " + @trade_returns_pot2.to_s
-    puts "TRADE POT 3"
-    puts "gains: " + @trade3_gains_counter.to_s
-    puts "losses: " + @trade3_loss_counter.to_s
-    puts "losses total: " + @trade3_loss_total.to_s
-    puts "short circuits: " + @trade3_shortcircuit_counter.to_s
-    puts "total profit/loss: " + @trade_returns_pot3.to_s
-    count = 0
+      end
+    trade_index = trade_index + 1
+    puts "--------------------------------------------"
   end
 
-  #puts "trading pot 1 running total: " + @trade_returns_pot1.to_s
-  #puts "trading pot 2 running total: " + @trade_returns_pot2.to_s
-  #puts "trading pot 3 running total: " + @trade_returns_pot3.to_s
+  total_pot = 0
+  a = 0
+  while a < @trade_returns_pot.length
+    total_pot = total_pot + @trade_returns_pot[a]
+    a = a + 1
+  end
+
+  if count == 10
+    a = 0
+    while a < @trade_pots
+      puts "------------------------------------------"
+      puts "time for profit and loss trade update"
+      puts "TRADE POT #{a + 1}"
+      puts "gains: " + @trade_gains_counter[a].to_s
+      puts "losses: " + @trade_loss_counter[a].to_s
+      puts "losses total: " + @trade_loss_total[a].to_s
+      puts "short circuits: " + @trade_shortcircuit_counter[a].to_s
+      puts "total profit/loss: " + @trade_returns_pot[a].to_s
+      a = a + 1
+    end
+    count = 0
+    puts "------------------------------------------"
+  end
+
+
+  total_pot = total_pot.round(2)
+  puts "total trading profit/loss pot: " + total_pot.to_s
   run_counter = run_counter + 1
-  puts "on iteration: " + run_counter.to_s + " of " + @run_timer.to_s
+  puts "on iteration: #{run_counter} of #{@run_timer}"
+  sleep TIME_PERIOD
+  puts "--------------------------------------------"
 end
 
 
