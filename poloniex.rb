@@ -6,9 +6,9 @@ require './trade.rb'
 TIME_PERIOD = 1
 MOVING_AVERAGE = 1
 SHORTCIRCUIT_FLAG = false
-@ma_2_interval = 120
-@ma_7_interval = 420
-@ma_30_interval = 1800
+@ma_2_interval = 2
+@ma_7_interval = 7
+@ma_30_interval = 30
 # MOVING AVERAGE sets how long the moving average should be set for, ie the candle times
 # for example, if you set the TIME PERIOD TO 30 seconds between calls, and the moving average to 1 minute, it wil take 2 calls a minute
 # if oyu set th etime period to 10 seconds and the moving average to 1 minute (60 seconds) it wil take 6 calls a minute
@@ -61,7 +61,9 @@ def create_timing_and_sample_sizes
   puts "2 candle moving average requires " + @ma_2_interval.to_s + " data samples to be taken"
   puts "7 candle moving average requires " + @ma_7_interval.to_s + " data samples to be taken"
   puts "30 candle moving average requires " + @ma_30_interval.to_s + " data samples to be taken"
-  @moving_averages = [[@ma_2_interval,@ma_7_interval,@ma_30_interval],[@ma_2_interval,@ma_7_interval,0],[@ma_2_interval,@ma_30_interval, 0],[@ma_7_interval,@ma_30_interval, 0]]
+
+
+  @moving_averages = [[0,1,2],[0,1,3],[0,2,3],[1,2,3]]
   @trade_pots = @moving_averages.length
 
 
@@ -76,6 +78,24 @@ def create_timing_and_sample_sizes
     @trade_buyprice[a] = 0
     @trade_returns_pot[a] = 0
     a = a+ 1
+  end
+end
+
+def get_current_moving_average(ma, results_array)
+  array = results_array.last(ma)
+  ma1_temp = 0
+  count = 0
+  if ma != 0
+    while count < ma
+      temp = array[count]
+      ma1_temp = ma1_temp + temp.to_f
+      count = count + 1
+    end
+    ma1 = ma1_temp / ma
+    puts "moving average for #{ma} was: #{ma1.round(2)}"
+    return ma1.round(2)
+  else
+    return 0
   end
 end
 
@@ -100,6 +120,7 @@ def get_poloniex_ticker
       a = raw_results.parsed_response
       flag = true
     rescue
+      puts "problem getting current price so trying again"
       raw_results = HTTParty.get("https://poloniex.com/public?command=returnTicker")
       a = raw_results.parsed_response
       flag = true
@@ -129,12 +150,26 @@ while run_counter < @run_timer
   @running_results.push(get_poloniex_ticker)
 
   trade_index = 0
-
+  current_moving_averages = []
+  current_moving_averages[0] = get_current_moving_average(@ma_2_interval, @running_results)
+  current_moving_averages[1] = get_current_moving_average(@ma_7_interval, @running_results)
+  current_moving_averages[2] = get_current_moving_average(@ma_30_interval, @running_results)
+  current_moving_averages[3] = 0
 
   while trade_index < @trade_pots
+    puts "------------------------------------------"
+    moving_average_touse = []
+    i = 0
+    while i < 3
+      index = @moving_averages[trade_index]
+      ma_base_index = index[i]
+      item = current_moving_averages[ma_base_index]
+      moving_average_touse.push(item)
+      i = i+ 1
+    end
     current_price = get_poloniex_ticker
     trade = Trade.new
-    trade_decision = trade.in_or_out?(@running_results, current_price, @moving_averages[trade_index])
+    trade_decision = trade.in_or_out?(moving_average_touse)
     puts "last price: #{current_price}"
     trade_returns = current_price - @trade_pot_lastbuyprice[trade_index]
 
@@ -222,7 +257,7 @@ while run_counter < @run_timer
     a = a + 1
   end
 
-  if count == 10
+  if count == 100
     a = 0
     while a < @trade_pots
       puts "------------------------------------------"
